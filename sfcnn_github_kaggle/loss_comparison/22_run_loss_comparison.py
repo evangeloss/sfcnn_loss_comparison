@@ -365,9 +365,6 @@ def main() -> None:
         zeta_b_all.append(zeta_b)
         p_u_all.append(p_u)
         zeta_u_all.append(zeta_u)
-
-    use_original_generator = (
-        args.pairs_per_channel is None and args.normalization == "auto"
     use_original_generator = all(
         (
             args.pairs_per_channel is None,
