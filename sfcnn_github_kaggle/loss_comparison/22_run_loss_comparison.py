@@ -368,9 +368,12 @@ def main() -> None:
 
     use_original_generator = (
         args.pairs_per_channel is None and args.normalization == "auto"
-        args.pairs_per_channel is None
-        and args.normalization == "auto"
-        and args.morphing_min is None
+    use_original_generator = all(
+        (
+            args.pairs_per_channel is None,
+            args.normalization == "auto",
+            args.morphing_min is None,
+        )
     )
     dataset_generator = (
         generate_Dataset_multiDef_multipilot
@@ -390,6 +393,12 @@ def main() -> None:
         if args.normalization == "auto"
         else args.normalization
     )
+    if args.normalization != "auto":
+        actual_normalization = args.normalization
+    elif args.pairs_per_channel is None:
+        actual_normalization = "target_assisted"
+    else:
+        actual_normalization = "observation_only"
     if not use_original_generator:
         dataset_options["pairs_per_channel"] = actual_pairs_per_channel
         dataset_options["normalization_mode"] = actual_normalization
