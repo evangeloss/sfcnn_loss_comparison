@@ -87,6 +87,16 @@ def parse_args() -> argparse.Namespace:
             "Omit to preserve the original all-pairs dataset."
         ),
     )
+    parser.add_argument(
+        "--normalization",
+        choices=("auto", "target_assisted", "observation_only"),
+        default="auto",
+        help=(
+            "Dataset normalization. 'auto' preserves the prior behavior: "
+            "target-assisted for the original all-pairs generator and "
+            "observation-only when --pairs-per-channel is supplied."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--evaluation-seed", type=int, default=2026)
     parser.add_argument(
@@ -326,14 +336,33 @@ def main() -> None:
         p_u_all.append(p_u)
         zeta_u_all.append(zeta_u)
 
+    use_original_generator = (
+        args.pairs_per_channel is None and args.normalization == "auto"
+    )
     dataset_generator = (
         generate_Dataset_multiDef_multipilot
-        if args.pairs_per_channel is None
+        if use_original_generator
         else generate_optimized_multideformation_dataset
     )
     dataset_options = {"Tpilots": t_pilots}
-    if args.pairs_per_channel is not None:
-        dataset_options["pairs_per_channel"] = args.pairs_per_channel
+    actual_pairs_per_channel = (
+        k_subcarriers - 1
+        if args.pairs_per_channel is None
+        else args.pairs_per_channel
+    )
+    actual_normalization = (
+        "target_assisted"
+        if args.normalization == "auto" and args.pairs_per_channel is None
+        else "observation_only"
+        if args.normalization == "auto"
+        else args.normalization
+    )
+    if not use_original_generator:
+        dataset_options["pairs_per_channel"] = actual_pairs_per_channel
+        dataset_options["normalization_mode"] = actual_normalization
+
+    print("Pairs per channel:", actual_pairs_per_channel)
+    print("Normalization:", actual_normalization)
 
     print("Generating one shared training dataset...", flush=True)
     x_train, y_train = dataset_generator(
@@ -515,12 +544,11 @@ def main() -> None:
             "evaluation_channels": args.eval_channels,
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
-            "pairs_per_channel": (
-                k_subcarriers - 1
-                if args.pairs_per_channel is None
-                else args.pairs_per_channel
+            "pairs_per_channel": actual_pairs_per_channel,
+            "normalization": actual_normalization,
+            "observation_only_normalization": (
+                actual_normalization == "observation_only"
             ),
-            "observation_only_normalization": args.pairs_per_channel is not None,
             "seed": args.seed,
             "evaluation_seed": args.evaluation_seed,
             "fc": fc,
