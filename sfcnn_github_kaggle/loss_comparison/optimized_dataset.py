@@ -78,6 +78,8 @@ def generate_optimized_multideformation_dataset(
     Tpilots=1,
     snr_probabilities=None,
     normalization_mode="observation_only",
+    morphing_ratio_range=None,
+    base_morphing_ratio=0.02,
     return_metadata=False,
 ):
     """Generate independent scenes with selectable pair count and normalization.
@@ -95,6 +97,16 @@ def generate_optimized_multideformation_dataset(
         raise ValueError(
             "normalization_mode must be 'observation_only' or 'target_assisted'"
         )
+    if base_morphing_ratio <= 0:
+        raise ValueError("base_morphing_ratio must be positive")
+    if morphing_ratio_range is not None:
+        morphing_min, morphing_max = map(float, morphing_ratio_range)
+        if morphing_min <= 0 or morphing_max < morphing_min:
+            raise ValueError(
+                "morphing_ratio_range must satisfy 0 < minimum <= maximum"
+            )
+    else:
+        morphing_min = morphing_max = float(base_morphing_ratio)
     if len(P_B_all) < M or len(P_U_all) < M:
         raise ValueError("The geometry codebook contains fewer than M views")
 
@@ -105,6 +117,7 @@ def generate_optimized_multideformation_dataset(
     sample_snr = np.zeros(total_samples, dtype=np.float32)
     sample_pair = np.zeros(total_samples, dtype=np.int16)
     sample_channel = np.zeros(total_samples, dtype=np.int32)
+    sample_morphing_ratio = np.zeros(total_samples, dtype=np.float32)
 
     S_all = generate_multi_pilots(N_U, Tpilots)
     zeta_b_zero = np.zeros((3, N_B), dtype=float)
@@ -118,6 +131,8 @@ def generate_optimized_multideformation_dataset(
     index = 0
     for channel_index in range(Nch):
         snr_db = float(snr_schedule[channel_index])
+        morphing_ratio = float(np.random.uniform(morphing_min, morphing_max))
+        morphing_scale = morphing_ratio / base_morphing_ratio
         params = generate_path_parameters(L, fc, fs)
         true_channel = build_H_fim_from_paths(
             params,
@@ -135,9 +150,9 @@ def generate_optimized_multideformation_dataset(
             deformed_channel = build_H_fim_from_paths(
                 params,
                 P_B_all[view],
-                Zeta_B_all[view],
+                Zeta_B_all[view] * morphing_scale,
                 P_U_all[view],
-                Zeta_U_all[view],
+                Zeta_U_all[view] * morphing_scale,
                 wavelength,
                 fs,
                 K,
@@ -202,6 +217,7 @@ def generate_optimized_multideformation_dataset(
             sample_snr[index] = snr_db
             sample_pair[index] = pair_index
             sample_channel[index] = channel_index
+            sample_morphing_ratio[index] = morphing_ratio
             index += 1
 
     if return_metadata:
@@ -209,8 +225,10 @@ def generate_optimized_multideformation_dataset(
             "sample_snr_db": sample_snr,
             "sample_pair_index": sample_pair,
             "sample_channel_index": sample_channel,
+            "sample_morphing_ratio_b_over_lambda": sample_morphing_ratio,
             "snr_schedule": snr_schedule,
             "normalization_mode": normalization_mode,
+            "morphing_ratio_range": [morphing_min, morphing_max],
         }
         return X, V, metadata
     return X, V

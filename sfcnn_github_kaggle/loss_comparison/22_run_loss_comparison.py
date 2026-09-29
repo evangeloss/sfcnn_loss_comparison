@@ -103,6 +103,18 @@ def parse_args() -> argparse.Namespace:
             "observation-only when --pairs-per-channel is supplied."
         ),
     )
+    parser.add_argument(
+        "--morphing-min",
+        type=float,
+        default=None,
+        help="Minimum training b/lambda. Must be used with --morphing-max.",
+    )
+    parser.add_argument(
+        "--morphing-max",
+        type=float,
+        default=None,
+        help="Maximum training b/lambda. Must be used with --morphing-min.",
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--evaluation-seed", type=int, default=2026)
     parser.add_argument(
@@ -137,6 +149,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("--learning-rate must be positive")
     if args.pairs_per_channel is not None and not 1 <= args.pairs_per_channel <= 31:
         parser.error("--pairs-per-channel must be between 1 and 31")
+    if (args.morphing_min is None) != (args.morphing_max is None):
+        parser.error("--morphing-min and --morphing-max must be supplied together")
+    if args.morphing_min is not None:
+        if args.morphing_min <= 0 or args.morphing_max < args.morphing_min:
+            parser.error("morphing range must satisfy 0 < minimum <= maximum")
     return args
 
 
@@ -351,6 +368,9 @@ def main() -> None:
 
     use_original_generator = (
         args.pairs_per_channel is None and args.normalization == "auto"
+        args.pairs_per_channel is None
+        and args.normalization == "auto"
+        and args.morphing_min is None
     )
     dataset_generator = (
         generate_Dataset_multiDef_multipilot
@@ -373,11 +393,24 @@ def main() -> None:
     if not use_original_generator:
         dataset_options["pairs_per_channel"] = actual_pairs_per_channel
         dataset_options["normalization_mode"] = actual_normalization
+        if args.morphing_min is not None:
+            dataset_options["morphing_ratio_range"] = (
+                args.morphing_min,
+                args.morphing_max,
+            )
 
     print("Pairs per channel:", actual_pairs_per_channel)
     print("Normalization:", actual_normalization)
     print("Deformation views (M):", m_views)
     print("Model input channels (4*M):", 4 * m_views)
+    if args.morphing_min is None:
+        print("Training morphing b/lambda: fixed at 0.02")
+    else:
+        print(
+            "Training morphing b/lambda: uniform in "
+            f"[{args.morphing_min}, {args.morphing_max}]"
+        )
+    print("Evaluation morphing b/lambda: fixed at 0.02")
 
     print("Generating one shared training dataset...", flush=True)
     x_train, y_train = dataset_generator(
@@ -456,6 +489,13 @@ def main() -> None:
             "K": k_subcarriers,
             "fc": fc,
             "fs": fs,
+            "pairs_per_channel": actual_pairs_per_channel,
+            "normalization": actual_normalization,
+            "training_morphing_b_over_lambda": (
+                0.02
+                if args.morphing_min is None
+                else [args.morphing_min, args.morphing_max]
+            ),
             "training_history": history,
             "training_seconds": duration,
         }
@@ -572,7 +612,16 @@ def main() -> None:
             "M": m_views,
             "L_train": l_train,
             "SNR_train_set": snr_train_set.tolist(),
+            "training_morphing_b_over_lambda": (
+                0.02
+                if args.morphing_min is None
+                else [args.morphing_min, args.morphing_max]
+            ),
+            "training_morphing_distribution": (
+                "fixed" if args.morphing_min is None else "uniform"
+            ),
             "morphing_range_b_over_lambda": 0.02,
+            "evaluation_morphing_b_over_lambda": 0.02,
         },
         "ranking_metric": "mean NMSE over all 4 path counts and 7 SNR points",
         "ranking": rows,
