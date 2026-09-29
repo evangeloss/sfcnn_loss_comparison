@@ -76,6 +76,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-channels", type=int, default=1000)
     parser.add_argument("--val-channels", type=int, default=200)
     parser.add_argument("--eval-channels", type=int, default=50)
+    parser.add_argument(
+        "--m-views",
+        type=int,
+        default=1,
+        help="Number of deformation views M. The model receives 4*M channels.",
+    )
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument(
@@ -117,7 +123,14 @@ def parse_args() -> argparse.Namespace:
         args.val_channels = 8
         args.eval_channels = 3
 
-    for name in ("epochs", "train_channels", "val_channels", "eval_channels", "batch_size"):
+    for name in (
+        "epochs",
+        "train_channels",
+        "val_channels",
+        "eval_channels",
+        "m_views",
+        "batch_size",
+    ):
         if getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
     if args.learning_rate <= 0:
@@ -310,7 +323,7 @@ def main() -> None:
     n_b = nh_b * nv_b
     n_u = nh_u * nv_u
     spacing = wavelength / 8
-    m_views = 8
+    m_views = args.m_views
     t_pilots = 1
 
     # Generate the codebook and both datasets once.  Every loss therefore sees
@@ -363,6 +376,8 @@ def main() -> None:
 
     print("Pairs per channel:", actual_pairs_per_channel)
     print("Normalization:", actual_normalization)
+    print("Deformation views (M):", m_views)
+    print("Model input channels (4*M):", 4 * m_views)
 
     print("Generating one shared training dataset...", flush=True)
     x_train, y_train = dataset_generator(
