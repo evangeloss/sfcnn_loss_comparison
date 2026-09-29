@@ -33,6 +33,7 @@ ORIGINAL_DIR = PROJECT_ROOT / "original_sfcnn"
 sys.path.insert(0, str(ORIGINAL_DIR))
 
 from losses import SFCNNLoss, VALID_LOSSES
+from optimized_dataset import generate_optimized_multideformation_dataset
 
 
 # Load only the reusable definitions required by this experiment.  Notebook
@@ -77,6 +78,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-channels", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument(
+        "--pairs-per-channel",
+        type=int,
+        default=None,
+        help=(
+            "Store this many random adjacent pairs per independent channel. "
+            "Omit to preserve the original all-pairs dataset."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--evaluation-seed", type=int, default=2026)
     parser.add_argument(
@@ -102,6 +112,8 @@ def parse_args() -> argparse.Namespace:
             parser.error(f"--{name.replace('_', '-')} must be positive")
     if args.learning_rate <= 0:
         parser.error("--learning-rate must be positive")
+    if args.pairs_per_channel is not None and not 1 <= args.pairs_per_channel <= 31:
+        parser.error("--pairs-per-channel must be between 1 and 31")
     return args
 
 
@@ -314,8 +326,17 @@ def main() -> None:
         p_u_all.append(p_u)
         zeta_u_all.append(zeta_u)
 
+    dataset_generator = (
+        generate_Dataset_multiDef_multipilot
+        if args.pairs_per_channel is None
+        else generate_optimized_multideformation_dataset
+    )
+    dataset_options = {"Tpilots": t_pilots}
+    if args.pairs_per_channel is not None:
+        dataset_options["pairs_per_channel"] = args.pairs_per_channel
+
     print("Generating one shared training dataset...", flush=True)
-    x_train, y_train = generate_Dataset_multiDef_multipilot(
+    x_train, y_train = dataset_generator(
         n_b,
         n_u,
         fc,
@@ -329,10 +350,10 @@ def main() -> None:
         p_u_all,
         zeta_u_all,
         m_views,
-        Tpilots=t_pilots,
+        **dataset_options,
     )
     print("Generating one shared validation dataset...", flush=True)
-    x_val, y_val = generate_Dataset_multiDef_multipilot(
+    x_val, y_val = dataset_generator(
         n_b,
         n_u,
         fc,
@@ -346,7 +367,7 @@ def main() -> None:
         p_u_all,
         zeta_u_all,
         m_views,
-        Tpilots=t_pilots,
+        **dataset_options,
     )
 
     train_dataset = TensorDataset(
@@ -494,6 +515,12 @@ def main() -> None:
             "evaluation_channels": args.eval_channels,
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
+            "pairs_per_channel": (
+                k_subcarriers - 1
+                if args.pairs_per_channel is None
+                else args.pairs_per_channel
+            ),
+            "observation_only_normalization": args.pairs_per_channel is not None,
             "seed": args.seed,
             "evaluation_seed": args.evaluation_seed,
             "fc": fc,
