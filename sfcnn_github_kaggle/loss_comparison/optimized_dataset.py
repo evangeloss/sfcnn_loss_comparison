@@ -77,13 +77,24 @@ def generate_optimized_multideformation_dataset(
     pairs_per_channel=8,
     Tpilots=1,
     snr_probabilities=None,
+    normalization_mode="observation_only",
     return_metadata=False,
 ):
-    """Generate more independent scenes with fewer stored pairs per scene."""
+    """Generate independent scenes with selectable pair count and normalization.
+
+    ``observation_only`` is deployment-valid because its scale is computed only
+    from the channel estimates available to the model. ``target_assisted``
+    reproduces the original notebook normalization by also including the true
+    channel in the scale. The latter is retained only for controlled ablations.
+    """
     if Tpilots != 1:
         raise ValueError("The preserved SFCNN input layout currently requires Tpilots=1")
     if not 1 <= pairs_per_channel <= K - 1:
         raise ValueError("pairs_per_channel must be between 1 and K-1")
+    if normalization_mode not in {"observation_only", "target_assisted"}:
+        raise ValueError(
+            "normalization_mode must be 'observation_only' or 'target_assisted'"
+        )
     if len(P_B_all) < M or len(P_U_all) < M:
         raise ValueError("The geometry codebook contains fewer than M views")
 
@@ -163,6 +174,9 @@ def generate_optimized_multideformation_dataset(
             for view in range(M):
                 scale_values.append(estimates[view][:, :, pair_index].reshape(-1))
                 scale_values.append(estimates[view][:, :, pair_index + 1].reshape(-1))
+            if normalization_mode == "target_assisted":
+                scale_values.append(h0.reshape(-1))
+                scale_values.append(h1.reshape(-1))
             scale = np.max(np.abs(np.concatenate(scale_values))) + 1e-8
 
             model_input = np.zeros((N_B, N_U, 4 * M), dtype=np.float32)
@@ -196,6 +210,7 @@ def generate_optimized_multideformation_dataset(
             "sample_pair_index": sample_pair,
             "sample_channel_index": sample_channel,
             "snr_schedule": snr_schedule,
+            "normalization_mode": normalization_mode,
         }
         return X, V, metadata
     return X, V
