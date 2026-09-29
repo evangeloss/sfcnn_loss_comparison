@@ -310,7 +310,7 @@ def main() -> None:
     n_b = nh_b * nv_b
     n_u = nh_u * nv_u
     spacing = wavelength / 8
-    m_views = 1
+    m_views = 8
     t_pilots = 1
 
     # Generate the codebook and both datasets once.  Every loss therefore sees
